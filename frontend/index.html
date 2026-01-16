@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paste Beans - Screenshot to Beancount</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📸 Paste Beans</h1>
+            <p>Convert bank statement screenshots to Beancount entries</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <div class="form-group">
+                    <label for="account-name">Account Name:</label>
+                    <input
+                        type="text"
+                        id="account-name"
+                        placeholder="e.g., Assets:Bank:Checking"
+                        value="Assets:Bank:Checking">
+                </div>
+
+                <div class="form-group">
+                    <label>Screenshot:</label>
+                    <div id="paste-area" class="paste-area">
+                        <div class="paste-instructions">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            <p>Click here and press <kbd>Ctrl+V</kbd> (or <kbd>Cmd+V</kbd>) to paste screenshot</p>
+                        </div>
+                        <img id="preview-image" class="preview-image" style="display: none;">
+                    </div>
+                </div>
+
+                <button id="generate-btn" class="generate-btn" disabled>Generate Beancount Entry</button>
+            </div>
+
+            <div class="output-section">
+                <div class="form-group">
+                    <label for="output">Generated Beancount Entry:</label>
+                    <textarea
+                        id="output"
+                        class="output-textarea"
+                        readonly
+                        placeholder="Beancount entries will appear here..."
+                    ></textarea>
+                </div>
+                <button id="copy-btn" class="copy-btn" style="display: none;">Copy to Clipboard</button>
+            </div>
+
+            <div id="status" class="status"></div>
+        </main>
+
+        <footer>
+            <p>Powered by Azure OpenAI + ChromaDB RAG</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

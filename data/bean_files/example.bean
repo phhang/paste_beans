@@ -1,0 +1,42 @@
+; Example Beancount file for Paste Beans
+; Add your existing .bean files to this directory for RAG context
+
+2024-01-10 * "Amazon" "Office supplies - printer paper"
+  Expenses:Shopping:Office                   45.99 USD
+  Assets:Bank:Checking                      -45.99 USD
+
+2024-01-12 * "Starbucks" "Morning coffee"
+  Expenses:Food:Coffee                        5.75 USD
+  Assets:Bank:Checking                       -5.75 USD
+
+2024-01-15 * "Amazon" "Books for development"
+  Expenses:Education:Books                   32.50 USD
+  Assets:Bank:Checking                      -32.50 USD
+
+2024-01-18 * "Target" "Groceries"
+  Expenses:Food:Groceries                    87.34 USD
+  Assets:Bank:Checking                      -87.34 USD
+
+2024-01-20 * "Shell Gas Station" "Fuel"
+  Expenses:Transportation:Gas                52.00 USD
+  Assets:Bank:Checking                      -52.00 USD
+
+2024-01-22 * "Netflix" "Monthly subscription"
+  Expenses:Entertainment:Streaming           15.99 USD
+  Assets:Bank:Checking                      -15.99 USD
+
+2024-01-25 * "Whole Foods" "Groceries"
+  Expenses:Food:Groceries                   124.67 USD
+  Assets:Bank:Checking                     -124.67 USD
+
+2024-01-28 * "Amazon" "Tech accessories"
+  Expenses:Shopping:Electronics              78.99 USD
+  Assets:Bank:Checking                      -78.99 USD
+
+2024-02-01 * "Starbucks" "Coffee and pastry"
+  Expenses:Food:Coffee                        8.25 USD
+  Assets:Bank:Checking                       -8.25 USD
+
+2024-02-05 * "Target" "Household items"
+  Expenses:Home:Supplies                     43.21 USD
+  Assets:Bank:Checking                      -43.21 USD
