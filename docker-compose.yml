@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  paste-beans:
+    build: .
+    container_name: paste-beans-app
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist ChromaDB data
+      - ./data/chroma_db:/app/data/chroma_db
+      # Mount bean files directory for ingestion
+      - ./data/bean_files:/app/data/bean_files
+    env_file:
+      - .env
+    environment:
+      # Override these if needed
+      - HOST=0.0.0.0
+      - PORT=8000
+      - CHROMA_PERSIST_DIRECTORY=/app/data/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
