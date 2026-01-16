@@ -13,6 +13,8 @@ ENV/
 
 # ChromaDB
 data/chroma_db/
+backend/data/
+backend/test_temp/
 
 # IDE
 .vscode/

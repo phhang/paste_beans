@@ -23,14 +23,21 @@ class Settings:
         self.azure_openai_api_version: str = os.getenv('AZURE_OPENAI_API_VERSION', '2024-02-15-preview')
 
         # Vector Database
-        self.chroma_persist_directory: str = os.getenv('CHROMA_PERSIST_DIRECTORY', './data/chroma_db')
+        # Make paths relative to the project root (parent of backend directory)
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(backend_dir)
+
+        self.chroma_persist_directory: str = os.getenv(
+            'CHROMA_PERSIST_DIRECTORY',
+            os.path.join(project_root, 'data', 'chroma_db')
+        )
 
         # Server Configuration
         self.host: str = os.getenv('HOST', '0.0.0.0')
         self.port: int = int(os.getenv('PORT', '8000'))
 
         # Bean files directory
-        self.bean_files_directory: str = './data/bean_files'
+        self.bean_files_directory: str = os.path.join(project_root, 'data', 'bean_files')
 
         # Debug Configuration
         # CLI argument takes precedence over environment variable

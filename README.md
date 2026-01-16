@@ -130,6 +130,54 @@ The app will generate:
 
 Notice it standardized "AMZN Marketplace" to "Amazon" and used the same category as your historical entries.
 
+## Vector Database Management
+
+The `manage_vectordb.py` script provides a CLI tool for managing the vector database:
+
+### Load .bean files
+
+```bash
+# Load all .bean files from default directory (data/bean_files/)
+cd backend
+python manage_vectordb.py --load
+
+# Load a specific .bean file
+python manage_vectordb.py --load path/to/transactions.bean
+
+# Load from a specific directory
+python manage_vectordb.py --load path/to/directory
+```
+
+### Show statistics
+
+```bash
+# Show basic statistics
+python manage_vectordb.py --stats
+
+# Show detailed statistics with sample entries
+python manage_vectordb.py --stats --verbose
+```
+
+### Cleanup database
+
+```bash
+# Delete all data from vector database (with confirmation)
+python manage_vectordb.py --cleanup
+
+# Skip confirmation prompt
+python manage_vectordb.py --cleanup --yes
+```
+
+### Combine operations
+
+```bash
+# Cleanup and reload fresh data
+python manage_vectordb.py --cleanup --yes --load
+
+# Load new files and show stats
+python manage_vectordb.py --load --stats
+```
+
 ## API Endpoints
 
 The backend provides several useful endpoints:
@@ -153,6 +201,8 @@ paste_beans/
 │   ├── vector_db.py             # ChromaDB operations
 │   ├── rag_service.py           # RAG logic
 │   ├── azure_openai_service.py  # Azure OpenAI integration
+│   ├── manage_vectordb.py       # Vector DB management CLI
+│   ├── logger.py                # Logging utilities
 │   └── requirements.txt         # Python dependencies
 ├── frontend/
 │   ├── index.html              # Main UI
@@ -209,9 +259,10 @@ Make sure you've set all required environment variables in `.env`:
 ### No historical context being used
 
 1. Check that .bean files are in `data/bean_files/`
-2. Restart the server to re-ingest files
-3. Check server logs to see ingestion results
-4. Visit `http://localhost:8000/api/stats` to see entry count
+2. Use the management script to load files: `cd backend && python manage_vectordb.py --load --stats`
+3. Restart the server to re-ingest files
+4. Check server logs to see ingestion results
+5. Visit `http://localhost:8000/api/stats` to see entry count
 
 ### CORS errors in browser
 
