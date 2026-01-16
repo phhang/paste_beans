@@ -2,6 +2,8 @@
 
 A web application that converts bank statement screenshots to Beancount entries using Azure OpenAI and RAG (Retrieval-Augmented Generation) for consistency with your historical transactions.
 
+![List of Beans](pics/beans.jpg)
+
 ## Features
 
 - **Paste screenshots directly** - No file uploads needed, just paste from clipboard

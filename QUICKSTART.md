@@ -1,5 +1,7 @@
 # Quick Start Guide
 
+![More Beans](pics/beans2.jpg)
+
 ## 1. Configure Environment
 
 ```bash
