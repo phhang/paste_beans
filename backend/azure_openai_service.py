@@ -88,9 +88,9 @@ class AzureOpenAIService:
 
 Please extract the following fields for EACH transaction:
 1. Date (in YYYY-MM-DD format)
-2. Merchant/Payee name
-3. Amount (as a positive number with currency)
-4. Any additional description or notes
+2. Merchant/Payee name, Use short payee name with first letter upper case. For exmaple: "HMART - REDMOND" would be just "Hmart".
+3. Amount (as a positive number with currency), use USD as default currency. 
+4. Any additional description or notes. For merchant name that is too long, put the rest of the information into description.
 
 Return the information as a JSON array where each element represents one transaction entry.
 
@@ -133,7 +133,7 @@ Return ONLY the JSON array, no additional text."""
                         ]
                     }
                 ],
-                max_tokens=500
+                max_tokens=4096
             )
 
             # Parse response

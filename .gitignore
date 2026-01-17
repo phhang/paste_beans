@@ -26,3 +26,6 @@ backend/test_temp/
 # OS
 .DS_Store
 Thumbs.db
+
+# Beancount files
+data/bean_files
