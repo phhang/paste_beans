@@ -191,26 +191,24 @@ async def generate_beancount(
         if settings.debug:
             logger.debug(f"Transactions: {transactions_list}")
 
-        # Process each transaction and generate Beancount entries
+        # Generate all Beancount entries in a single API call
+        logger.info("Generating Beancount entries...")
+        beancount_entries = azure_openai_service.generate_beancount_entries(
+            transactions_list,
+            account_name
+        )
+
+        logger.info(f"Generated {len(beancount_entries)} entries")
+
+        # Pair extracted data with generated entries
         results = []
-        for idx, transaction_data in enumerate(transactions_list, 1):
-            merchant = transaction_data.get('merchant', 'UNKNOWN')
-            logger.info(f"Processing transaction {idx}/{len(transactions_list)}: {merchant}")
-
-            # Generate Beancount entry directly (no RAG)
-            logger.info("Generating Beancount entry...")
-            beancount_entry = azure_openai_service.generate_beancount_entry(
-                transaction_data,
-                account_name
-            )
-
-            logger.info(f"Generated entry for {merchant}")
+        for idx, transaction_data in enumerate(transactions_list):
+            entry = beancount_entries[idx] if idx < len(beancount_entries) else "Error: No entry generated"
             if settings.debug:
-                logger.debug(f"Entry:\n{beancount_entry}")
-
+                logger.debug(f"Entry {idx + 1}:\n{entry}")
             results.append({
                 "extracted_data": transaction_data,
-                "beancount_entry": beancount_entry
+                "beancount_entry": entry
             })
 
         logger.info(f"Successfully processed {len(results)} transaction(s)")

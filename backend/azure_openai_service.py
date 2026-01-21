@@ -71,7 +71,7 @@ class AzureOpenAIService:
 
 Please extract the following fields for EACH transaction:
 1. Date (in YYYY-MM-DD format)
-2. Merchant/Payee name, Use short payee name with first letter upper case. For exmaple: "HMART - REDMOND" would be just "Hmart".
+2. Merchant/Payee name
 3. Amount (as a positive number with currency), use USD as default currency. 
 4. Any additional description or notes. For merchant name that is too long, put the rest of the information into description.
 
@@ -183,47 +183,138 @@ Return ONLY the JSON array, no additional text."""
                 'description': f'Error parsing response: {str(e)}'
             }]
 
-    def generate_beancount_entry(
+    def generate_beancount_entries(
         self,
-        transaction_data: Dict,
+        transactions: List[Dict],
         account_name: str
-    ) -> str:
-        """Generate a Beancount entry from transaction data.
+    ) -> List[str]:
+        """Generate Beancount entries for all transactions in a single API call.
 
         Args:
-            transaction_data: Extracted transaction data (date, merchant, amount, description)
+            transactions: List of extracted transaction data (date, merchant, amount, description)
             account_name: The account name to use (e.g., "Assets:Bank:Checking")
 
         Returns:
-            Generated Beancount entry
+            List of generated Beancount entries
         """
-        logger.debug("Calling Azure OpenAI for beancount generation")
+        logger.debug(f"Calling Azure OpenAI to generate {len(transactions)} beancount entries")
 
         if settings.debug:
-            logger.debug(f"Transaction data: {transaction_data}")
+            logger.debug(f"Transactions: {transactions}")
             logger.debug(f"Account name: {account_name}")
 
-        prompt = f"""Generate a Beancount entry for this transaction:
+        # Build transaction list for prompt
+        transactions_text = ""
+        for idx, t in enumerate(transactions, 1):
+            transactions_text += f"""
+Transaction {idx}:
+- Date: {t.get('date', 'UNKNOWN')}
+- Merchant: {t.get('merchant', 'UNKNOWN')}
+- Amount: {t.get('amount', 'UNKNOWN')}
+- Description: {t.get('description', '')}
+"""
 
-Date: {transaction_data.get('date', 'UNKNOWN')}
-Merchant: {transaction_data.get('merchant', 'UNKNOWN')}
-Amount: {transaction_data.get('amount', 'UNKNOWN')}
-Description: {transaction_data.get('description', '')}
-Account: {account_name}
+        prompt = f"""Generate Beancount entries for the following {len(transactions)} transactions:
+{transactions_text}
+Account to use: {account_name}
 
-Generate a properly formatted Beancount entry following these rules:
+Generate properly formatted Beancount entries following these rules:
 1. Use the date in YYYY-MM-DD format
 2. Use "*" for cleared transactions
-3. Put the merchant/payee in quotes as the first quoted string
-4. Choose an appropriate expense category based on the merchant name (e.g., Expenses:Food:Restaurants, Expenses:Shopping:Groceries, Expenses:Transport, etc.)
+3. Put the merchant/payee name in quotes as the first quoted string, with first letter upper case. Do not include additional information beyond the merchant name. For example: "HMART - REDMOND" would be just "Hmart".
+4. Choose an appropriate expense category based on the merchant name
 5. Format amounts with proper spacing and currency
+6. Only generate description if there is additional information beyond merchant name. Do not add merchant phone numbers, locations, or other extraneous details in the description.
 
-Example format:
-2024-01-15 * "Amazon" "Online purchase"
-  Expenses:Shopping:Online    25.99 USD
-  Assets:Bank:Checking       -25.99 USD
+Example format for ONE entry:
+2024-01-15 * "Safeway" "(optional) description"
+  Expenses:Eat:Grocery
+  {account_name}       -25.99 USD
 
-Return ONLY the Beancount entry, no additional text or explanation."""
+Here are some common Beancount categories you can use:
+** Income
+Income:Paycheck ; Base salary
+Income:Paycheck:Benefit
+Income:Bonus
+Income:RSU
+Income:Match401k
+Income:MatchHSA
+Income:InterestIncome ; 利息
+Income:Investment     ; 用于Wealthfront等auto investment
+Income:RetailIncome ; 卖二手
+Income:ReturnedPurchase
+Income:CashBack ; 羊毛
+Income:Family
+;Income:Reimbursement
+
+** Expenses
+*** Transport 交通出行
+Expenses:Transport:Auto:Gas
+Expenses:Transport:Auto:Maint   ; 汽车保养维护等
+Expenses:Transport:Auto:Parking ; 停车
+Expenses:Transport:Taxi         ; 打车 Uber/Lyft
+Expenses:Transport:Public       ; 公共交通
+*** Utilities 水电网等
+Expenses:Utilities:WaterSewer
+Expenses:Utilities:GasElectric
+Expenses:Utilities:Internet
+Expenses:Utilities:Trash
+*** Housing
+Expenses:Housing:Furniture
+Expenses:Housing:Tools
+Expenses:Housing:Repair
+Expenses:Housing:Comfort
+Expenses:Housing:Consumable ; 耗材
+*** Entertainment 文娱类
+Expenses:Entertainment:Book
+Expenses:Entertainment:Streaming  ; 电影 电视剧 流媒体订阅
+Expenses:Entertainment:Toys
+Expenses:Entertainment:Games
+Expenses:Entertainment:Activity   ; 门票
+Expenses:Entertainment:Guns
+*** Appearance
+Expenses:Appearance:Cloth
+Expenses:Appearance:Hair
+Expenses:Appearance:Skincare
+Expenses:Appearance:Shoes
+*** Fees
+Expenses:FeesAndCharges:Financial ; 账户管理费
+Expenses:FeesAndCharges:AnnualFee ; 信用卡年费
+Expenses:FeesAndCharges:Subscription ; 订阅服务
+Expenses:FeesAndCharges:Shipping  ; 运费
+Expenses:FeesAndCharges:Insurance
+Expenses:FeesAndCharges:Document  ; 签证等证件费用
+*** Eat
+Expenses:Eat:Grocery  ; 超市购物
+Expenses:Eat:Meal     ; 出门吃正餐
+Expenses:Eat:Fastfood ; 出门吃快餐
+Expenses:Eat:Snack    ; 零食饮料
+Expenses:Eat:Bakery   ; 面包
+** Medical
+Expenses:Medical:Medicine     ; 非处方药 维生素等
+Expenses:Medical:Prescription ; 处方药
+Expenses:Medical:Bill         ; 账单
+** Gadget 数码产品
+Expenses:Gadget:Accessory     ; 配件
+Expenses:Gadget:PC            ; PC硬件
+Expenses:Gadget:SmartHome
+** Travel
+Expenses:Travel:Transport
+Expenses:Travel:Hotel
+Expenses:Travel:Sightseeing   ; 门票 活动
+Expenses:Travel:Shopping      ; 纪念品
+** Tax
+Expenses:Taxes:Federal
+Expenses:Taxes:PropertyTax
+Expenses:Taxes:SocialSecurity
+Expenses:Taxes:Medicare
+** 其他（以上均不适用时使用）
+Expenses:GiftsAndDonations
+Expenses:HealthAndFitness
+Expenses:Education
+Expenses:Services
+
+Return ALL entries separated by a blank line. Return ONLY the Beancount entries, no additional text, numbering, or explanation."""
 
         try:
             response = self.client.chat.completions.create(
@@ -234,7 +325,7 @@ Return ONLY the Beancount entry, no additional text or explanation."""
                         "content": (
                             "You are a Beancount accounting expert. "
                             "Generate properly formatted Beancount entries. "
-                            "Be concise and return only the entry itself."
+                            "Be concise and return only the entries themselves."
                         )
                     },
                     {
@@ -242,26 +333,59 @@ Return ONLY the Beancount entry, no additional text or explanation."""
                         "content": prompt
                     }
                 ],
-                max_tokens=300,
+                max_tokens=4096,
                 temperature=0.3
             )
 
-            beancount_entry = response.choices[0].message.content.strip()
+            response_text = response.choices[0].message.content.strip()
 
             if settings.debug:
-                logger.debug(f"LLM generation response:\n{beancount_entry}")
+                logger.debug(f"LLM generation response:\n{response_text}")
 
             # Clean up the response (remove markdown code blocks if present)
-            if beancount_entry.startswith('```'):
-                lines = beancount_entry.split('\n')
+            if response_text.startswith('```'):
+                lines = response_text.split('\n')
                 if lines[0].startswith('```'):
                     lines = lines[1:]
                 if lines and lines[-1].startswith('```'):
                     lines = lines[:-1]
-                beancount_entry = '\n'.join(lines).strip()
+                response_text = '\n'.join(lines).strip()
 
-            return beancount_entry
+            # Split into individual entries (entries are separated by blank lines)
+            entries = self._split_beancount_entries(response_text)
+
+            logger.debug(f"Parsed {len(entries)} beancount entries")
+            return entries
 
         except Exception as e:
-            log_exception(logger, e, "Error generating Beancount entry")
-            raise Exception(f"Error generating Beancount entry: {str(e)}")
+            log_exception(logger, e, "Error generating Beancount entries")
+            raise Exception(f"Error generating Beancount entries: {str(e)}")
+
+    def _split_beancount_entries(self, text: str) -> List[str]:
+        """Split a text containing multiple Beancount entries into individual entries.
+
+        Args:
+            text: Text containing multiple Beancount entries separated by blank lines
+
+        Returns:
+            List of individual Beancount entries
+        """
+        entries = []
+        current_entry_lines = []
+
+        for line in text.split('\n'):
+            # Check if this line starts a new entry (date pattern at start of line)
+            if line and line[0].isdigit() and len(line) >= 10 and line[4] == '-' and line[7] == '-':
+                # If we have a current entry, save it
+                if current_entry_lines:
+                    entries.append('\n'.join(current_entry_lines).strip())
+                current_entry_lines = [line]
+            else:
+                current_entry_lines.append(line)
+
+        # Don't forget the last entry
+        if current_entry_lines:
+            entries.append('\n'.join(current_entry_lines).strip())
+
+        # Filter out empty entries
+        return [e for e in entries if e.strip()]
