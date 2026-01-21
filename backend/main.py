@@ -1,8 +1,6 @@
-"""FastAPI backend server for Paste Beans application."""
+"""FastAPI backend server for Paste Beans application (simplified, no vector DB)."""
 
 import os
-import sys
-import logging
 import traceback
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,8 +10,6 @@ from typing import Optional
 import uvicorn
 
 from config import settings
-from vector_db import VectorDatabase
-from rag_service import RAGService
 from azure_openai_service import AzureOpenAIService
 from logger import setup_logging, log_exception
 
@@ -24,15 +20,15 @@ logger = setup_logging(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="Paste Beans API",
-    description="Convert bank statement screenshots to Beancount entries with RAG",
-    version="1.0.0",
-    debug=settings.debug  # Enable FastAPI debug mode
+    description="Convert bank statement screenshots to Beancount entries",
+    version="2.0.0",
+    debug=settings.debug
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,7 +42,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception on {request.url.path}: {str(exc)}")
 
     if settings.debug:
-        # Return full stack trace in debug mode
         return JSONResponse(
             status_code=500,
             content={
@@ -56,7 +51,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             }
         )
     else:
-        # Return sanitized error in production
         return JSONResponse(
             status_code=500,
             content={"error": "Internal server error"}
@@ -84,18 +78,16 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 # Initialize services
-vector_db: Optional[VectorDatabase] = None
-rag_service: Optional[RAGService] = None
 azure_openai_service: Optional[AzureOpenAIService] = None
 
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
-    global vector_db, rag_service, azure_openai_service
+    global azure_openai_service
 
     logger.info("=" * 60)
-    logger.info("Starting Paste Beans server")
+    logger.info("Starting Paste Beans server (no-vector-db mode)")
     logger.info("=" * 60)
 
     if settings.debug:
@@ -104,7 +96,6 @@ async def startup_event():
         logger.debug(f"  Host: {settings.host}")
         logger.debug(f"  Port: {settings.port}")
         logger.debug(f"  Azure OpenAI Endpoint: {settings.azure_openai_endpoint}")
-        logger.debug(f"  Chroma DB: {settings.chroma_persist_directory}")
 
     logger.info("Initializing services...")
 
@@ -117,18 +108,6 @@ async def startup_event():
         logger.warning("  - AZURE_OPENAI_DEPLOYMENT_NAME")
         logger.warning("The server will start but API calls will fail.")
         logger.warning("Copy .env.example to .env and fill in your credentials.")
-
-    # Initialize vector database
-    try:
-        vector_db = VectorDatabase(settings.chroma_persist_directory)
-        logger.info(f"Vector database initialized at: {settings.chroma_persist_directory}")
-    except Exception as e:
-        log_exception(logger, e, "Failed to initialize vector database")
-        raise
-
-    # Initialize RAG service
-    rag_service = RAGService(vector_db)
-    logger.info("RAG service initialized")
 
     # Initialize Azure OpenAI service
     try:
@@ -148,31 +127,6 @@ async def startup_event():
         log_exception(logger, e, "Could not initialize Azure OpenAI service")
         azure_openai_service = None
 
-    # Check for existing .bean files and offer to ingest them
-    bean_dir = settings.bean_files_directory
-    if os.path.exists(bean_dir):
-        bean_files = [f for f in os.listdir(bean_dir) if f.endswith('.bean')]
-        if bean_files:
-            logger.info(f"Found {len(bean_files)} .bean files in {bean_dir}")
-            logger.info("Ingesting existing files into vector database...")
-
-            try:
-                results = vector_db.ingest_directory(bean_dir)
-                total_entries = sum(results.values())
-                logger.info(f"Ingested {total_entries} total entries from {len(results)} files")
-
-                if settings.debug:
-                    for filename, count in results.items():
-                        logger.debug(f"  {filename}: {count} entries")
-
-            except Exception as e:
-                log_exception(logger, e, "Error ingesting bean files")
-
-    # Print collection stats
-    stats = vector_db.get_collection_stats()
-    logger.info("Vector database stats:")
-    logger.info(f"  Total entries: {stats['total_entries']}")
-
     logger.info("=" * 60)
     logger.info("Server ready!")
     logger.info("=" * 60)
@@ -183,7 +137,8 @@ async def root():
     """Root endpoint."""
     return {
         "message": "Paste Beans API",
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "mode": "no-vector-db",
         "status": "running"
     }
 
@@ -191,15 +146,10 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
-    if vector_db is None or rag_service is None:
-        raise HTTPException(status_code=503, detail="Services not initialized")
-
-    stats = vector_db.get_collection_stats()
-
     return {
         "status": "healthy",
-        "azure_openai_configured": settings.validate_azure_config(),
-        "vector_db_entries": stats['total_entries']
+        "mode": "no-vector-db",
+        "azure_openai_configured": settings.validate_azure_config()
     }
 
 
@@ -212,7 +162,7 @@ async def generate_beancount(
 
     Args:
         image: Screenshot image file
-        account_name: Account name to use in the entry
+        account_name: Account name to use in the entry (e.g., "Assets:Bank:Checking")
 
     Returns:
         JSON with generated Beancount entry
@@ -244,28 +194,14 @@ async def generate_beancount(
         # Process each transaction and generate Beancount entries
         results = []
         for idx, transaction_data in enumerate(transactions_list, 1):
-            # Get merchant name for RAG
             merchant = transaction_data.get('merchant', 'UNKNOWN')
-
             logger.info(f"Processing transaction {idx}/{len(transactions_list)}: {merchant}")
 
-            # Build RAG prompt with historical context
-            logger.debug("Building RAG context...")
-            rag_prompt = rag_service.build_rag_prompt(
-                merchant_name=merchant,
-                date=transaction_data.get('date'),
-                amount=transaction_data.get('amount'),
-                account_name=account_name
-            )
-
-            if settings.debug:
-                logger.debug(f"RAG prompt:\n{rag_prompt}")
-
-            # Generate Beancount entry
+            # Generate Beancount entry directly (no RAG)
             logger.info("Generating Beancount entry...")
-            beancount_entry = azure_openai_service.generate_beancount_with_context(
+            beancount_entry = azure_openai_service.generate_beancount_entry(
                 transaction_data,
-                rag_prompt
+                account_name
             )
 
             logger.info(f"Generated entry for {merchant}")
@@ -274,14 +210,8 @@ async def generate_beancount(
 
             results.append({
                 "extracted_data": transaction_data,
-                "beancount_entry": beancount_entry,
-                "rag_context_used": merchant != 'UNKNOWN'
+                "beancount_entry": beancount_entry
             })
-
-        # Optionally: Add the new entries to vector database for future RAG
-        # (commented out by default to avoid polluting the database with unverified entries)
-        # for result in results:
-        #     vector_db.add_entry(result['beancount_entry'])
 
         logger.info(f"Successfully processed {len(results)} transaction(s)")
 
@@ -296,105 +226,7 @@ async def generate_beancount(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/ingest-bean-file")
-async def ingest_bean_file(file: UploadFile = File(...)):
-    """Ingest a .bean file into the vector database.
-
-    Args:
-        file: .bean file to ingest
-
-    Returns:
-        JSON with ingestion results
-    """
-    if not file.filename.endswith('.bean'):
-        raise HTTPException(
-            status_code=400,
-            detail="Only .bean files are supported"
-        )
-
-    try:
-        # Save file temporarily
-        temp_path = os.path.join(settings.bean_files_directory, file.filename)
-        os.makedirs(settings.bean_files_directory, exist_ok=True)
-
-        content = await file.read()
-
-        with open(temp_path, 'wb') as f:
-            f.write(content)
-
-        # Ingest file
-        count = vector_db.ingest_bean_file(temp_path)
-
-        # Get updated stats
-        stats = vector_db.get_collection_stats()
-
-        return {
-            "success": True,
-            "filename": file.filename,
-            "entries_added": count,
-            "total_entries": stats['total_entries']
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/ingest-directory")
-async def ingest_directory():
-    """Ingest all .bean files from the data directory.
-
-    Returns:
-        JSON with ingestion results
-    """
-    try:
-        results = vector_db.ingest_directory(settings.bean_files_directory)
-        stats = vector_db.get_collection_stats()
-
-        return {
-            "success": True,
-            "files_processed": results,
-            "total_entries": stats['total_entries']
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/merchant-context/{merchant_name}")
-async def get_merchant_context(merchant_name: str):
-    """Get historical context for a merchant.
-
-    Args:
-        merchant_name: Name of the merchant
-
-    Returns:
-        JSON with merchant context and suggestions
-    """
-    try:
-        context = rag_service.get_merchant_context(merchant_name)
-        return context
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/stats")
-async def get_stats():
-    """Get vector database statistics.
-
-    Returns:
-        JSON with database statistics
-    """
-    try:
-        stats = vector_db.get_collection_stats()
-        return stats
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # Mount static files for frontend
-# Get the absolute path to the frontend directory
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 if os.path.exists(frontend_path):
     app.mount("/static", StaticFiles(directory=frontend_path), name="static")
@@ -432,6 +264,6 @@ if __name__ == "__main__":
         "main:app",
         host=settings.host,
         port=settings.port,
-        reload=settings.debug,  # Only reload in debug mode
+        reload=settings.debug,
         log_level="debug" if settings.debug else "info"
     )

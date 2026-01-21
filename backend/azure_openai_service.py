@@ -2,11 +2,8 @@
 
 import base64
 import json
-import os
-from typing import Dict, List, Optional
+from typing import Dict, List
 from openai import AzureOpenAI
-from PIL import Image
-import io
 
 from logger import setup_logging, log_exception
 from config import settings
@@ -43,18 +40,6 @@ class AzureOpenAIService:
         )
         self.deployment_name = deployment_name
 
-    def encode_image(self, image_path: str) -> str:
-        """Encode image to base64 string.
-
-        Args:
-            image_path: Path to image file
-
-        Returns:
-            Base64 encoded image string
-        """
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
-
     def encode_image_bytes(self, image_bytes: bytes) -> str:
         """Encode image bytes to base64 string.
 
@@ -79,11 +64,9 @@ class AzureOpenAIService:
             List of dictionaries with extracted transaction data
         """
         logger.debug(f"Encoding image ({len(image_bytes)} bytes)")
-        # Encode image
         base64_image = self.encode_image_bytes(image_bytes)
 
         logger.debug("Calling Azure OpenAI vision API for extraction")
-        # Prepare prompt for extraction
         extraction_prompt = """Analyze this bank statement screenshot and extract ALL transaction information visible in the image.
 
 Please extract the following fields for EACH transaction:
@@ -136,7 +119,6 @@ Return ONLY the JSON array, no additional text."""
                 max_tokens=4096
             )
 
-            # Parse response
             content = response.choices[0].message.content
 
             if settings.debug:
@@ -194,7 +176,6 @@ Return ONLY the JSON array, no additional text."""
             return normalized_data
 
         except json.JSONDecodeError as e:
-            # Fallback: return a single entry with error information
             return [{
                 'date': 'UNKNOWN',
                 'merchant': 'UNKNOWN',
@@ -202,16 +183,16 @@ Return ONLY the JSON array, no additional text."""
                 'description': f'Error parsing response: {str(e)}'
             }]
 
-    def generate_beancount_with_context(
+    def generate_beancount_entry(
         self,
         transaction_data: Dict,
-        rag_prompt: str
+        account_name: str
     ) -> str:
-        """Generate a Beancount entry using RAG context.
+        """Generate a Beancount entry from transaction data.
 
         Args:
-            transaction_data: Extracted transaction data
-            rag_prompt: RAG-enhanced prompt with historical context
+            transaction_data: Extracted transaction data (date, merchant, amount, description)
+            account_name: The account name to use (e.g., "Assets:Bank:Checking")
 
         Returns:
             Generated Beancount entry
@@ -220,7 +201,29 @@ Return ONLY the JSON array, no additional text."""
 
         if settings.debug:
             logger.debug(f"Transaction data: {transaction_data}")
-            logger.debug(f"Prompt length: {len(rag_prompt)} chars")
+            logger.debug(f"Account name: {account_name}")
+
+        prompt = f"""Generate a Beancount entry for this transaction:
+
+Date: {transaction_data.get('date', 'UNKNOWN')}
+Merchant: {transaction_data.get('merchant', 'UNKNOWN')}
+Amount: {transaction_data.get('amount', 'UNKNOWN')}
+Description: {transaction_data.get('description', '')}
+Account: {account_name}
+
+Generate a properly formatted Beancount entry following these rules:
+1. Use the date in YYYY-MM-DD format
+2. Use "*" for cleared transactions
+3. Put the merchant/payee in quotes as the first quoted string
+4. Choose an appropriate expense category based on the merchant name (e.g., Expenses:Food:Restaurants, Expenses:Shopping:Groceries, Expenses:Transport, etc.)
+5. Format amounts with proper spacing and currency
+
+Example format:
+2024-01-15 * "Amazon" "Online purchase"
+  Expenses:Shopping:Online    25.99 USD
+  Assets:Bank:Checking       -25.99 USD
+
+Return ONLY the Beancount entry, no additional text or explanation."""
 
         try:
             response = self.client.chat.completions.create(
@@ -230,18 +233,17 @@ Return ONLY the JSON array, no additional text."""
                         "role": "system",
                         "content": (
                             "You are a Beancount accounting expert. "
-                            "Generate properly formatted Beancount entries following the user's "
-                            "historical patterns and conventions. "
-                            "Always use the exact payee names and categories from the provided examples."
+                            "Generate properly formatted Beancount entries. "
+                            "Be concise and return only the entry itself."
                         )
                     },
                     {
                         "role": "user",
-                        "content": rag_prompt
+                        "content": prompt
                     }
                 ],
-                max_tokens=500,
-                temperature=0.3  # Lower temperature for more consistent output
+                max_tokens=300,
+                temperature=0.3
             )
 
             beancount_entry = response.choices[0].message.content.strip()
@@ -252,7 +254,6 @@ Return ONLY the JSON array, no additional text."""
             # Clean up the response (remove markdown code blocks if present)
             if beancount_entry.startswith('```'):
                 lines = beancount_entry.split('\n')
-                # Remove first and last lines if they're code block markers
                 if lines[0].startswith('```'):
                     lines = lines[1:]
                 if lines and lines[-1].startswith('```'):
@@ -264,49 +265,3 @@ Return ONLY the JSON array, no additional text."""
         except Exception as e:
             log_exception(logger, e, "Error generating Beancount entry")
             raise Exception(f"Error generating Beancount entry: {str(e)}")
-
-    def generate_beancount_from_screenshot(
-        self,
-        image_bytes: bytes,
-        account_name: str,
-        rag_prompt: Optional[str] = None
-    ) -> Dict:
-        """Complete workflow: extract transaction and generate Beancount entry.
-
-        Args:
-            image_bytes: Screenshot image as bytes
-            account_name: Account name to use
-            rag_prompt: Optional RAG-enhanced prompt
-
-        Returns:
-            Dictionary with extracted data and generated Beancount entry
-        """
-        # Step 1: Extract transaction data
-        transaction_data = self.extract_transaction_from_screenshot(image_bytes)
-
-        # Step 2: Generate Beancount entry
-        if rag_prompt:
-            beancount_entry = self.generate_beancount_with_context(
-                transaction_data,
-                rag_prompt
-            )
-        else:
-            # Fallback: generate without RAG context
-            simple_prompt = f"""Generate a Beancount entry for this transaction:
-
-Date: {transaction_data['date']}
-Merchant: {transaction_data['merchant']}
-Amount: {transaction_data['amount']}
-Account: {account_name}
-
-Use proper Beancount syntax."""
-
-            beancount_entry = self.generate_beancount_with_context(
-                transaction_data,
-                simple_prompt
-            )
-
-        return {
-            'extracted_data': transaction_data,
-            'beancount_entry': beancount_entry
-        }
