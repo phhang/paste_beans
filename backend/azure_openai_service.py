@@ -116,7 +116,7 @@ Return ONLY the JSON array, no additional text."""
                         ]
                     }
                 ],
-                max_tokens=4096
+                max_completion_tokens=4096
             )
 
             content = response.choices[0].message.content
@@ -333,7 +333,7 @@ Return ALL entries separated by a blank line. Return ONLY the Beancount entries,
                         "content": prompt
                     }
                 ],
-                max_tokens=4096,
+                max_completion_tokens=4096,
                 temperature=0.3
             )
 
