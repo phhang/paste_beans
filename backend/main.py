@@ -223,32 +223,6 @@ async def generate_beancount(
         log_exception(logger, e, "Error generating beancount entry")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# Mount static files for frontend
-frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
-if os.path.exists(frontend_path):
-    app.mount("/static", StaticFiles(directory=frontend_path), name="static")
-
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        """Serve frontend files. Catch-all route for SPA."""
-        # Skip API routes
-        if full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="API endpoint not found")
-
-        # Try to serve the requested file
-        file_path = os.path.join(frontend_path, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-
-        # Default to index.html for SPA routing
-        index_path = os.path.join(frontend_path, "index.html")
-        if os.path.isfile(index_path):
-            return FileResponse(index_path)
-
-        raise HTTPException(status_code=404, detail="File not found")
-
-
 if __name__ == "__main__":
     logger.info("Starting Paste Beans server...")
     logger.info(f"Access the application at: http://{settings.host}:{settings.port}")
